@@ -1263,8 +1263,9 @@ void ConvertToGXML(void)
 
       if(p->PolzIsSet()) {
         output << "        ";
-        output << " <ppolar> " << p->PolzPolarAngle()   << " </ppolar>";
-        output << " <pazmth> " << p->PolzAzimuthAngle() << " </pazmth>";
+        output << " <polx> " << p->GetPolarization().x()   << " </polx>";
+        output << " <poly> " << p->GetPolarization().y()   << " </poly>";
+        output << " <polz> " << p->GetPolarization().z()   << " </polz>";
         output << endl;
       }
 
@@ -2377,9 +2378,9 @@ void ConvertToGRooTracker(void)
         brStdHepP4    [iparticle][2] = p->P4()->Pz(); 
         brStdHepP4    [iparticle][3] = p->P4()->E(); 
         if(p->PolzIsSet()) {
-          brStdHepPolz  [iparticle][0] = TMath::Sin(p->PolzPolarAngle()) * TMath::Cos(p->PolzAzimuthAngle());
-          brStdHepPolz  [iparticle][1] = TMath::Sin(p->PolzPolarAngle()) * TMath::Sin(p->PolzAzimuthAngle());
-          brStdHepPolz  [iparticle][2] = TMath::Cos(p->PolzPolarAngle());
+          brStdHepPolz  [iparticle][0] = p->GetPolarization().x();
+          brStdHepPolz  [iparticle][1] = p->GetPolarization().y();
+          brStdHepPolz  [iparticle][2] = p->GetPolarization().z();
         }
         brStdHepFd    [iparticle] = p->FirstDaughter(); 
         brStdHepLd    [iparticle] = p->LastDaughter(); 

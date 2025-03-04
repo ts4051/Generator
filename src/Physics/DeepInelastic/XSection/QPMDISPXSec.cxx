@@ -33,6 +33,7 @@
 #include "Framework/Utils/KineUtils.h"
 #include "Framework/Utils/Cache.h"
 #include "Framework/Utils/CacheBranchFx.h"
+#include "Physics/Common/PrimaryLeptonUtils.h"
 
 using std::ostringstream;
 
@@ -184,6 +185,7 @@ double QPMDISPXSec::XSec(
        << "Subtracting charm piece: " << xsec_charm << " / out of " << xsec;
 #endif
   xsec = TMath::Max(0., xsec-xsec_charm);
+
   return xsec;
 }
 //____________________________________________________________________________
@@ -280,5 +282,172 @@ void QPMDISPXSec::LoadConfig(void)
 
   fCharmProdModel = dynamic_cast<const XSecAlgorithmI *> ( this -> SubAlg(local_key) ) ;
   assert(fCharmProdModel);
+
+  //-- charm mass
+  // GetParam( "Charm-Mass", fMc ) ; //TODO Is this the corect way to handle charm?
+
 }
-//____________________________________________________________________________
+// ____________________________________________________________________________
+TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) const
+{
+  /*
+    References:
+      [1] https://arxiv.org/pdf/hep-ph/0305324
+  */
+
+  //
+  // Get event information
+  //
+
+  const Kinematics & kinematics = interaction->Kine();
+  const InitialState & init_state = interaction->InitState();
+  const ProcessInfo & proc_info = interaction->ProcInfo();
+
+  // Bail for NC
+  if (!proc_info.IsWeakCC()) {
+    return TVector3(0., 0., 0.);
+  }
+
+  // Get target nucleon (lab frame)
+  const Target & target = init_state.Tgt(); // This is the nucelus
+  const TLorentzVector nucleon_p4_lab = target.HitNucP4(); // This is the nucleon
+
+  // Get neutrino (lab frame)
+  TLorentzVector * tempNeutrino = init_state.GetProbeP4(kRfLab);
+  TLorentzVector nu_4p_lab = *tempNeutrino; //TODO why this temp object?
+  delete tempNeutrino;
+  int nu_pdg = init_state.ProbePdg();
+
+  // Get final state lepton (lab frame)
+  const TLorentzVector lepton_4p_lab = kinematics.FSLeptonP4();
+
+  //TODO charm flag?
+  bool charm = false;
+
+
+  //
+  // Boost to target nucleon rest frame
+  //
+
+  // Polarization calculation is performed in target rest frame
+  // Target nucleon has small momentum (Fermi motion) so is not precisdely at rest, so transform 
+  // to the nucelon's rest frame to perform the polarization calculation correctly.
+
+  // Get beta corresponding to nucleon target
+  TVector3 beta = nucleon_p4_lab.BoostVector();
+
+  // Now transform the relevent 4-momenta
+  TLorentzVector nucleon_p4_rest(nucleon_p4_lab);
+  TLorentzVector nu_4p_rest(nu_4p_lab);
+  TLorentzVector lepton_4p_rest(lepton_4p_lab);
+  nucleon_p4_rest.Boost(-beta);
+  nu_4p_rest.Boost(-beta);
+  lepton_4p_rest.Boost(-beta);
+
+
+  //
+  // Get kinematic variables
+  //
+  
+  // Symbols matching [1]
+
+  // Get Ferynman diagrram definition, in the target rest frame
+  TLorentzVector p = nucleon_p4_rest;
+  TLorentzVector k = nu_4p_rest;
+  TLorentzVector kprime = lepton_4p_rest;
+  TLorentzVector q = k - kprime; //[1] eqn 5
+
+  // Get other kinematic variables
+  double Q2 = -q.Mag2();  //[1] eqn 5 //-q**2;
+  double p_dot_q = p.Dot(q); // Used in multiple places, so calculating once now
+  double x = Q2 / (2. * p_dot_q); // [1] eqn 10
+  double M = nucleon_p4_lab.M();
+
+  // Cross-check Q2 and x against the kinematics object
+  double tol = 1e-3;
+  assert(("Q2 mismatch", (Q2 - kinematics.Q2(true)) < tol));
+  assert(("Q2 mismatch", (x - kinematics.x(true)) < tol));
+
+
+  //
+  // Calculate W1-5
+  //
+
+  // Get F1-5
+  // fDISSF.Calculate(interaction); //TODO Is this calculate already performed by XSec function? Seem to get NaNs if I call it again?
+  double F1 = fDISSF.F1();
+  double F2 = fDISSF.F2();
+  double F3 = fDISSF.F3();
+  double F4 = fDISSF.F4();
+  double F5 = fDISSF.F5();
+
+  // Get W2-5, [1] eqn 53.
+  double W_common_term = pow(M, 2) / p_dot_q;
+  double W2 = W_common_term * F2;
+  double W3 = W_common_term * F3;
+  double W4 = W_common_term * F4;
+  double W5 = W_common_term * F5;
+
+  // Get W1, which is a special case, see [1] eqn 55.
+  // Includes a correction that is applied to the Björken x variable when a charm quark
+  // is produced, see the last paragraph of p. 11 in [1].
+  double xi = x;
+  // if(charm) {
+  //   xi = x / (Q2 / (Q2 + pow(m_charm, 2)));   //TODO should I handle charm in here?
+  // }
+  double W1 = ( 1 + (xi * W_common_term) ) * F1;
+
+
+  //
+  // Calculate lepton polarization in the target rest frame 
+  //
+
+  // Call helper function to calculate rest frame polarization
+  TVector3 polarization_rest = genie::utils::CalculatePolarizationVectorInTargetRestFrame(
+    nu_4p_rest, // neutrinoMomTRF,
+    lepton_4p_rest, // leptonMomTRF, 
+    pdg::IsNeutrino(nu_pdg), // isLeftPolarized
+    M,
+    W1,
+    W2,
+    W3,
+    W4,
+    W5
+  );
+
+
+
+
+  //
+  // Transform to lab frame
+  //
+
+  //TODO turn this into a function
+
+  // Rest frame polarization was defined such that:
+  //  (a) The longitudinal component is along the lepton momentum direction
+  //  (b) The transverse component is in the nu-lepton scattering plane
+  // So here we boost is required for a spin vector
+
+  // Get momentum 3-vectors for use in calculation
+  TVector3 nu_3p_lab = nu_4p_lab.Vect();
+  TVector3 lepton_3p_lab = lepton_4p_lab.Vect();
+
+  // Get longitudinal component in lab frame
+  TVector3 polarization_lab_l = lepton_3p_lab * polarization_rest[2] * (1. / lepton_3p_lab.Mag());
+
+  // Get transverse component in lab frame
+  TVector3 transverse_direction = nu_3p_lab.Cross(lepton_3p_lab).Cross(lepton_3p_lab);
+  TVector3 polarization_lab_t = transverse_direction * polarization_rest[0] * (1. / transverse_direction.Mag());
+
+  // Combine into a vector
+  TVector3 polarization_lab = polarization_lab_l + polarization_lab_t;
+
+  // Magnitude should not have changed - verify this
+  double mag_diff = polarization_lab.Mag() - polarization_rest.Mag();
+  assert(("Rest and lab frame p[olarization vector magnitudes do not match", mag_diff < tol));
+  
+  return polarization_lab;
+
+}
+// ____________________________________________________________________________

@@ -20,6 +20,9 @@
 #ifndef _PRIMARY_LEPTON_UTILS_H
 #define _PRIMARY_LEPTON_UTILS_H
 
+#include "TVector3.h"
+#include "TLorentzVector.h"
+
 namespace genie {
 
 class GHepRecord;
@@ -27,6 +30,18 @@ class GHepRecord;
 namespace utils {
 
   void SetPrimaryLeptonPolarization( GHepRecord* ev );
+
+  TVector3 CalculatePolarizationVectorInTargetRestFrame(
+      const TLorentzVector & neutrinoMomTRF,
+      const TLorentzVector & leptonMomTRF, 
+      bool isLeftPolarized,
+      double M,
+      double W1,
+      double W2,
+      double W3,
+      double W4,
+      double W5
+  );
 
 } // utils   namespace
 } // genie   namespace

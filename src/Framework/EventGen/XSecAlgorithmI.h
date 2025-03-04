@@ -18,6 +18,8 @@
 #ifndef _XSEC_ALGORITHM_I_H_
 #define _XSEC_ALGORITHM_I_H_
 
+#include "TVector3.h"
+
 #include "Framework/Algorithm/Algorithm.h"
 #include "Framework/Conventions/KinePhaseSpace.h"
 #include "Framework/Interaction/Interaction.h"
@@ -31,6 +33,9 @@ public:
 
   //! Compute the cross section for the input interaction
   virtual double XSec (const Interaction* i, KinePhaseSpace_t k=kPSfE) const = 0;
+
+  //! Compute the final lepton polarization for the input interaction
+  virtual TVector3 FinalLeptonPolarization (const Interaction* i) const;
 
   //! Integrate the model over the kinematic phase space available to the
   //! input interaction (kinematical cuts can be included)
@@ -46,6 +51,9 @@ protected:
   XSecAlgorithmI();
   XSecAlgorithmI(string name);
   XSecAlgorithmI(string name, string config);
+
+  // mutable TVector3 fFinalLeptonPolarization; //TODO Should this instead be stored in the Interaction/Kinematics object>
+
 };
 
 }       // genie namespace
