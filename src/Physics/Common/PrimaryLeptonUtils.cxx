@@ -112,3 +112,38 @@ TVector3 genie::utils::CalculatePolarizationVectorInTargetRestFrame(
 
 }
 //____________________________________________________________________________
+TVector3 genie::utils::TransformTargetRestFramePolarizationVectorToLabFrame(
+  const TLorentzVector & neutrinoMomLab,
+  const TLorentzVector & leptonMomLab,
+  const TVector3 & polarization_rest
+)
+{
+  /*
+    Rest frame polarization was defined such that:
+     (a) The longitudinal component is along the lepton momentum direction
+     (b) The transverse component is in the nu-lepton scattering plane
+    So here we boost is required for a spin vector
+  */
+
+  // Get momentum 3-vectors for use in calculation
+  //TODO maybe user could just pass 3-vectors as args instead?
+  TVector3 nu_3p_lab = neutrinoMomLab.Vect();
+  TVector3 lepton_3p_lab = leptonMomLab.Vect();
+
+  // Get longitudinal component in lab frame
+  TVector3 polarization_lab_l = lepton_3p_lab * polarization_rest[2] * (1. / lepton_3p_lab.Mag());
+
+  // Get transverse component in lab frame
+  TVector3 transverse_direction = nu_3p_lab.Cross(lepton_3p_lab).Cross(lepton_3p_lab);
+  TVector3 polarization_lab_t = transverse_direction * polarization_rest[0] * (1. / transverse_direction.Mag());
+
+  // Combine into a vector
+  TVector3 polarization_lab = polarization_lab_l + polarization_lab_t;
+
+  // Magnitude should not have changed - verify this
+  double mag_diff = polarization_lab.Mag() - polarization_rest.Mag();
+  assert(("Rest and lab frame p[olarization vector magnitudes do not match", mag_diff < 1e-3));
+
+  return polarization_lab;
+}
+//____________________________________________________________________________

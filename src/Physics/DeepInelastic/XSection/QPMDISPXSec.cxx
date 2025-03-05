@@ -302,11 +302,16 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
   const Kinematics & kinematics = interaction->Kine();
   const InitialState & init_state = interaction->InitState();
   const ProcessInfo & proc_info = interaction->ProcInfo();
+  const XclsTag & xcls = interaction->ExclTag();
 
   // Bail for NC
   if (!proc_info.IsWeakCC()) {
     return TVector3(0., 0., 0.);
-  }
+  }  
+
+  // Check no charm events end up here (would need to apply a correction to W1 if so)
+  bool charm = xcls.IsCharmEvent();
+  assert(("QPMDISPXSec::FinalLeptonPolarization does not support charm", !charm));
 
   // Get target nucleon (lab frame)
   const Target & target = init_state.Tgt(); // This is the nucelus
@@ -320,9 +325,6 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
 
   // Get final state lepton (lab frame)
   const TLorentzVector lepton_4p_lab = kinematics.FSLeptonP4();
-
-  //TODO charm flag?
-  bool charm = false;
 
 
   //
@@ -366,7 +368,7 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
   // Cross-check Q2 and x against the kinematics object
   double tol = 1e-3;
   assert(("Q2 mismatch", (Q2 - kinematics.Q2(true)) < tol));
-  assert(("Q2 mismatch", (x - kinematics.x(true)) < tol));
+  assert(("x mismatch", (x - kinematics.x(true)) < tol));
 
 
   //
@@ -380,11 +382,23 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
   double F3 = fDISSF.F3();
   double F4 = fDISSF.F4();
   double F5 = fDISSF.F5();
+ 
+  // When the hit quark is specified, GENIE returns the structure functions accounting for only the PDF for that
+  // quark (rather than the combination of all quark PDFs when not hit quak is specified, e.g. the nucelon-level 
+  // structure functions). However, for the case of F3 this can have a negative sign in some cases (e.g. u/ubar 
+  // quarks) since GENIE includes the sign that will be used to construct the nucelon-level structure functions. 
+  // This is incompatible with the calculation in [1] and gives unphysical polarization, so we manually correct
+  // the sign here (note the situation is inverted for nubar).
+  //TODO need to understand this better
+  double F3_sign = 1.;
+  if(  (pdg::IsNeutrino(nu_pdg) and (F3 < 0.)) or (pdg::IsAntiNeutrino(nu_pdg) and (F3 > 0.)) ) {
+    F3_sign = -1.;
+  }
 
   // Get W2-5, [1] eqn 53.
   double W_common_term = pow(M, 2) / p_dot_q;
   double W2 = W_common_term * F2;
-  double W3 = W_common_term * F3;
+  double W3 = W_common_term * F3_sign * F3;
   double W4 = W_common_term * F4;
   double W5 = W_common_term * F5;
 
@@ -416,37 +430,16 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
   );
 
 
-
-
   //
   // Transform to lab frame
   //
 
-  //TODO turn this into a function
+  TVector3 polarization_lab = genie::utils::TransformTargetRestFramePolarizationVectorToLabFrame(
+    nu_4p_lab,
+    lepton_4p_lab,
+    polarization_rest
+  );
 
-  // Rest frame polarization was defined such that:
-  //  (a) The longitudinal component is along the lepton momentum direction
-  //  (b) The transverse component is in the nu-lepton scattering plane
-  // So here we boost is required for a spin vector
-
-  // Get momentum 3-vectors for use in calculation
-  TVector3 nu_3p_lab = nu_4p_lab.Vect();
-  TVector3 lepton_3p_lab = lepton_4p_lab.Vect();
-
-  // Get longitudinal component in lab frame
-  TVector3 polarization_lab_l = lepton_3p_lab * polarization_rest[2] * (1. / lepton_3p_lab.Mag());
-
-  // Get transverse component in lab frame
-  TVector3 transverse_direction = nu_3p_lab.Cross(lepton_3p_lab).Cross(lepton_3p_lab);
-  TVector3 polarization_lab_t = transverse_direction * polarization_rest[0] * (1. / transverse_direction.Mag());
-
-  // Combine into a vector
-  TVector3 polarization_lab = polarization_lab_l + polarization_lab_t;
-
-  // Magnitude should not have changed - verify this
-  double mag_diff = polarization_lab.Mag() - polarization_rest.Mag();
-  assert(("Rest and lab frame p[olarization vector magnitudes do not match", mag_diff < tol));
-  
   return polarization_lab;
 
 }

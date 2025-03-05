@@ -43,6 +43,13 @@ namespace utils {
       double W5
   );
 
+  TVector3 TransformTargetRestFramePolarizationVectorToLabFrame(
+    const TLorentzVector & neutrinoMomLab,
+    const TLorentzVector & leptonMomLab,
+    const TVector3 & polarization_rest
+  );
+
+
 } // utils   namespace
 } // genie   namespace
 
