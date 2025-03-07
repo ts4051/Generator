@@ -186,6 +186,14 @@ double QPMDISPXSec::XSec(
 #endif
   xsec = TMath::Max(0., xsec-xsec_charm);
 
+  // Calculate the DIS structure functions again, but for the whole nucleon (rather than quark)
+  // Do this by unsetting the hit quark (reset it afterwards)
+  Target * targetPtr = init_state.TgtPtr(); //TODO merge with const ref target above?
+  int qpdg = targetPtr->HitQrkPdg();
+  targetPtr->UnsetHitQrkPdg();
+  fDISSFNucleon.Calculate(interaction);
+  targetPtr->SetHitQrkPdg(qpdg);
+
   return xsec;
 }
 //____________________________________________________________________________
@@ -246,6 +254,9 @@ void QPMDISPXSec::LoadConfig(void)
 
   fDISSF.SetModel(fDISSFModel); // <-- attach algorithm
 
+  // Also init the "nucleon-level" structure function calculation
+  fDISSFNucleon.SetModel(fDISSFModel); // <-- attach algorithm
+
   // Cross section scaling factor
   GetParam( "DIS-CC-XSecScale", fCCScale ) ;
   GetParam( "DIS-NC-XSecScale", fNCScale ) ;
@@ -294,6 +305,21 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
     References:
       [1] https://arxiv.org/pdf/hep-ph/0305324
   */
+
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  bool useHitQrkStrucFns = false;
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+
 
   //
   // Get event information
@@ -376,12 +402,18 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
   //
 
   // Get F1-5
-  // fDISSF.Calculate(interaction); //TODO Is this calculate already performed by XSec function? Seem to get NaNs if I call it again?
-  double F1 = fDISSF.F1();
-  double F2 = fDISSF.F2();
-  double F3 = fDISSF.F3();
-  double F4 = fDISSF.F4();
-  double F5 = fDISSF.F5();
+  double F1 = fDISSFNucleon.F1();
+  double F2 = fDISSFNucleon.F2();
+  double F3 = fDISSFNucleon.F3();
+  double F4 = fDISSFNucleon.F4();
+  double F5 = fDISSFNucleon.F5();
+  if(useHitQrkStrucFns) {
+    F1 = fDISSF.F1();
+    F2 = fDISSF.F2();
+    F3 = fDISSF.F3();
+    F4 = fDISSF.F4();
+    F5 = fDISSF.F5();
+  }
  
   // When the hit quark is specified, GENIE returns the structure functions accounting for only the PDF for that
   // quark (rather than the combination of all quark PDFs when not hit quak is specified, e.g. the nucelon-level 
@@ -391,8 +423,10 @@ TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) co
   // the sign here (note the situation is inverted for nubar).
   //TODO need to understand this better
   double F3_sign = 1.;
-  if(  (pdg::IsNeutrino(nu_pdg) and (F3 < 0.)) or (pdg::IsAntiNeutrino(nu_pdg) and (F3 > 0.)) ) {
-    F3_sign = -1.;
+  if (useHitQrkStrucFns) {
+    if(  (pdg::IsNeutrino(nu_pdg) and (F3 < 0.)) or (pdg::IsAntiNeutrino(nu_pdg) and (F3 > 0.)) ) {
+      F3_sign = -1.;
+    }
   }
 
   // Get W2-5, [1] eqn 53.

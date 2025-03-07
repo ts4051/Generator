@@ -52,6 +52,7 @@ private:
   void   LoadConfig                  (void);
 
   mutable DISStructureFunc fDISSF;
+  mutable DISStructureFunc fDISSFNucleon;
   bool                     fInInitPhase;
 
   const DISStructureFuncModelI * fDISSFModel;         ///< SF model
