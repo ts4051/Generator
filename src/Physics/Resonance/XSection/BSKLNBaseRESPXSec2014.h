@@ -62,6 +62,7 @@ namespace genie {
       double XSec         (const Interaction * i, KinePhaseSpace_t k) const;
       double Integral     (const Interaction * i) const;
       bool   ValidProcess (const Interaction * i) const;
+      TVector3 FinalLeptonPolarization (const Interaction* i) const;
 
       // overload the Algorithm::Configure() methods to load private data
       // members from configuration options
@@ -127,6 +128,10 @@ namespace genie {
       bool   fGVSaritaSchwinger ; 
       double fcII ; 
       double fMb2 ; 
+
+      mutable double fSigma_minus_minus;
+      mutable double fSigma_plus_plus;
+      mutable double fSigma_minus_plus;
 
       const XSecIntegratorI * fXSecIntegrator;
   };

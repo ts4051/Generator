@@ -33,6 +33,7 @@
 #include "Framework/Utils/KineUtils.h"
 #include "Framework/Utils/Cache.h"
 #include "Framework/Utils/CacheBranchFx.h"
+#include "Physics/Common/PrimaryLeptonUtils.h"
 
 using std::ostringstream;
 
@@ -184,6 +185,15 @@ double QPMDISPXSec::XSec(
        << "Subtracting charm piece: " << xsec_charm << " / out of " << xsec;
 #endif
   xsec = TMath::Max(0., xsec-xsec_charm);
+
+  // Calculate the DIS structure functions again, but for the whole nucleon (rather than quark)
+  // Do this by unsetting the hit quark (reset it afterwards)
+  Target * targetPtr = init_state.TgtPtr(); //TODO merge with const ref target above?
+  int qpdg = targetPtr->HitQrkPdg();
+  targetPtr->UnsetHitQrkPdg();
+  fDISSFNucleon.Calculate(interaction);
+  targetPtr->SetHitQrkPdg(qpdg);
+
   return xsec;
 }
 //____________________________________________________________________________
@@ -244,6 +254,9 @@ void QPMDISPXSec::LoadConfig(void)
 
   fDISSF.SetModel(fDISSFModel); // <-- attach algorithm
 
+  // Also init the "nucleon-level" structure function calculation
+  fDISSFNucleon.SetModel(fDISSFModel); // <-- attach algorithm
+
   // Cross section scaling factor
   GetParam( "DIS-CC-XSecScale", fCCScale ) ;
   GetParam( "DIS-NC-XSecScale", fNCScale ) ;
@@ -280,5 +293,188 @@ void QPMDISPXSec::LoadConfig(void)
 
   fCharmProdModel = dynamic_cast<const XSecAlgorithmI *> ( this -> SubAlg(local_key) ) ;
   assert(fCharmProdModel);
+
+  //-- charm mass
+  // GetParam( "Charm-Mass", fMc ) ; //TODO Is this the corect way to handle charm?
+
 }
-//____________________________________________________________________________
+// ____________________________________________________________________________
+TVector3 QPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) const
+{
+  /*
+    References:
+      [1] https://arxiv.org/pdf/hep-ph/0305324
+  */
+
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  bool useHitQrkStrucFns = false;
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+  //TODO choose option...
+
+
+  //
+  // Get event information
+  //
+
+  const Kinematics & kinematics = interaction->Kine();
+  const InitialState & init_state = interaction->InitState();
+  const ProcessInfo & proc_info = interaction->ProcInfo();
+  const XclsTag & xcls = interaction->ExclTag();
+
+  // Bail for NC
+  if (!proc_info.IsWeakCC()) {
+    return TVector3(0., 0., 0.);
+  }  
+
+  // Check no charm events end up here (would need to apply a correction to W1 if so)
+  bool charm = xcls.IsCharmEvent();
+  assert(("QPMDISPXSec::FinalLeptonPolarization does not support charm", !charm));
+
+  // Get target nucleon (lab frame)
+  const Target & target = init_state.Tgt(); // This is the nucelus
+  const TLorentzVector nucleon_p4_lab = target.HitNucP4(); // This is the nucleon
+
+  // Get neutrino (lab frame)
+  TLorentzVector * tempNeutrino = init_state.GetProbeP4(kRfLab);
+  TLorentzVector nu_4p_lab = *tempNeutrino; //TODO why this temp object?
+  delete tempNeutrino;
+  int nu_pdg = init_state.ProbePdg();
+
+  // Get final state lepton (lab frame)
+  const TLorentzVector lepton_4p_lab = kinematics.FSLeptonP4();
+
+
+  //
+  // Boost to target nucleon rest frame
+  //
+
+  // Polarization calculation is performed in target rest frame
+  // Target nucleon has small momentum (Fermi motion) so is not precisdely at rest, so transform 
+  // to the nucelon's rest frame to perform the polarization calculation correctly.
+
+  // Get beta corresponding to nucleon target
+  TVector3 beta = nucleon_p4_lab.BoostVector();
+
+  // Now transform the relevent 4-momenta
+  TLorentzVector nucleon_p4_rest(nucleon_p4_lab);
+  TLorentzVector nu_4p_rest(nu_4p_lab);
+  TLorentzVector lepton_4p_rest(lepton_4p_lab);
+  nucleon_p4_rest.Boost(-beta);
+  nu_4p_rest.Boost(-beta);
+  lepton_4p_rest.Boost(-beta);
+
+
+  //
+  // Get kinematic variables
+  //
+  
+  // Symbols matching [1]
+
+  // Get Ferynman diagrram definition, in the target rest frame
+  TLorentzVector p = nucleon_p4_rest;
+  TLorentzVector k = nu_4p_rest;
+  TLorentzVector kprime = lepton_4p_rest;
+  TLorentzVector q = k - kprime; //[1] eqn 5
+
+  // Get other kinematic variables
+  double Q2 = -q.Mag2();  //[1] eqn 5 //-q**2;
+  double p_dot_q = p.Dot(q); // Used in multiple places, so calculating once now
+  double x = Q2 / (2. * p_dot_q); // [1] eqn 10
+  double M = nucleon_p4_lab.M();
+
+  // Cross-check Q2 and x against the kinematics object
+  double tol = 1e-3;
+  assert(("Q2 mismatch", (Q2 - kinematics.Q2(true)) < tol));
+  assert(("x mismatch", (x - kinematics.x(true)) < tol));
+
+
+  //
+  // Calculate W1-5
+  //
+
+  // Get F1-5
+  double F1 = fDISSFNucleon.F1();
+  double F2 = fDISSFNucleon.F2();
+  double F3 = fDISSFNucleon.F3();
+  double F4 = fDISSFNucleon.F4();
+  double F5 = fDISSFNucleon.F5();
+  if(useHitQrkStrucFns) {
+    F1 = fDISSF.F1();
+    F2 = fDISSF.F2();
+    F3 = fDISSF.F3();
+    F4 = fDISSF.F4();
+    F5 = fDISSF.F5();
+  }
+ 
+  // When the hit quark is specified, GENIE returns the structure functions accounting for only the PDF for that
+  // quark (rather than the combination of all quark PDFs when not hit quak is specified, e.g. the nucelon-level 
+  // structure functions). However, for the case of F3 this can have a negative sign in some cases (e.g. u/ubar 
+  // quarks) since GENIE includes the sign that will be used to construct the nucelon-level structure functions. 
+  // This is incompatible with the calculation in [1] and gives unphysical polarization, so we manually correct
+  // the sign here (note the situation is inverted for nubar).
+  //TODO need to understand this better
+  double F3_sign = 1.;
+  if (useHitQrkStrucFns) {
+    if(  (pdg::IsNeutrino(nu_pdg) and (F3 < 0.)) or (pdg::IsAntiNeutrino(nu_pdg) and (F3 > 0.)) ) {
+      F3_sign = -1.;
+    }
+  }
+
+  // Get W2-5, [1] eqn 53.
+  double W_common_term = pow(M, 2) / p_dot_q;
+  double W2 = W_common_term * F2;
+  double W3 = W_common_term * F3_sign * F3;
+  double W4 = W_common_term * F4;
+  double W5 = W_common_term * F5;
+
+  // Get W1, which is a special case, see [1] eqn 55.
+  // Includes a correction that is applied to the Björken x variable when a charm quark
+  // is produced, see the last paragraph of p. 11 in [1].
+  double xi = x;
+  // if(charm) {
+  //   xi = x / (Q2 / (Q2 + pow(m_charm, 2)));   //TODO should I handle charm in here?
+  // }
+  double W1 = ( 1 + (xi * W_common_term) ) * F1;
+
+
+  //
+  // Calculate lepton polarization in the target rest frame 
+  //
+
+  // Call helper function to calculate rest frame polarization
+  TVector3 polarization_rest = genie::utils::CalculatePolarizationVectorInTargetRestFrame(
+    nu_4p_rest, // neutrinoMomTRF,
+    lepton_4p_rest, // leptonMomTRF, 
+    pdg::IsNeutrino(nu_pdg), // isLeftPolarized
+    M,
+    W1,
+    W2,
+    W3,
+    W4,
+    W5
+  );
+
+
+  //
+  // Transform to lab frame
+  //
+
+  TVector3 polarization_lab = genie::utils::TransformTargetRestFramePolarizationVectorToLabFrame(
+    nu_4p_lab,
+    lepton_4p_lab,
+    polarization_rest
+  );
+
+  return polarization_lab;
+
+}
+// ____________________________________________________________________________

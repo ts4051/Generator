@@ -276,3 +276,8 @@ void KNOTunedQPMDISPXSec::LoadConfig(void)
 
   }
 //____________________________________________________________________________
+TVector3 KNOTunedQPMDISPXSec::FinalLeptonPolarization(const Interaction* interaction) const
+{
+  return fDISModel->FinalLeptonPolarization(interaction); //TODO does the RES-DIS reduction scheme have any impact on the polerization?
+}
+//____________________________________________________________________________

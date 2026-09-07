@@ -138,3 +138,13 @@ void HybridXSecAlgorithm::LoadConfig(void)
     assert( fDefaultXSecAlg );
   }
 }
+//____________________________________________________________________________
+TVector3 HybridXSecAlgorithm::FinalLeptonPolarization (const Interaction* interaction) const
+{
+  const XSecAlgorithmI* alg_to_use = this->ChooseXSecAlg( *interaction );
+
+  if ( !alg_to_use ) return XSecAlgorithmI::FinalLeptonPolarization(interaction);
+
+  return alg_to_use->FinalLeptonPolarization( interaction );
+}
+//____________________________________________________________________________
